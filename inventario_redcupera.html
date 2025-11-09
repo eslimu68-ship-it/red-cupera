@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RED-CUPERA E.S.P — Stock, Transacciones y Recibos</title>
+<!-- SheetJS para generar archivo Excel -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root{--green:#1b8a4d;--bg:#f6fbf7;--card:#fff;--text:#08321a}
+  body{font-family:Inter,system-ui,Arial;padding:18px;background:linear-gradient(180deg,#f6fbf7 0,#eef9ee 100%);color:var(--text)}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .logo-box{width:64px;height:64px;border-radius:10px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+  h1{margin:0 0 4px 0;color:var(--green)}
+  .muted{font-size:13px;color:#4b7b58}
+  .layout{display:grid;grid-template-columns:380px 1fr;gap:16px}
+  .card{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+  label{font-size:13px;color:#2f6b47;margin-top:8px;display:block}
+  input,select,button,textarea{width:100%;padding:8px;margin-top:6px;border-radius:8px;border:1px solid #e6f4ea;font-size:14px}
+  .row{display:flex;gap:8px}
+  .row>div{flex:1}
+  button.primary{background:var(--green);color:#fff;border:none}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  th,td{padding:8px;border-bottom:1px solid #eef6ee;text-align:left;vertical-align:middle}
+  th{background:#f3fbf6;color:var(--green);font-weight:700}
+  .small{padding:6px 10px;font-size:13px}
+  .right{display:flex;gap:8px;justify-content:flex-end}
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:90;padding:18px}
+  .modal.open{display:flex}
+  .receipt{width:720px;max-width:100%;background:#fff;border-radius:12px;padding:18px;box-shadow:0 18px 54px rgba(2,30,10,0.28);color:#0b3b21}
+  .receipt .line{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #e6f1ea}
+  .receipt .total{font-weight:800;color:var(--green);font-size:18px}
+  @media print{ body>*:not(.receipt){display:none !important} .receipt{position:static;box-shadow:none;width:100%;border-radius:0;padding:0} }
+  @media (max-width:1100px){ .layout{grid-template-columns:1fr} }
+  .logo-placeholder{font-weight:800;color:#fff}
+</style>
+</head>
+<body>
+  <header>
+    <div id="headerLogo" class="logo-box">RC</div>
+    <div style="flex:1">
+      <h1>RED-CUPERA E.S.P</h1>
+      <div class="muted">Control de inventario, historial de stock y recibos</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="exportXlsxBtn" class="small">Exportar XLSX</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- izquierda: empresa + material + logo upload -->
+    <section class="card">
+      <h3 style="margin:0">Empresa y logo</h3>
+      <label for="logoInput">Subir logo (PNG/JPG)</label>
+      <input id="logoInput" type="file" accept="image/*" />
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="removeLogo" class="small">Eliminar logo</button>
+      </div>
+
+      <hr style="margin:12px 0"/>
+
+      <h3 style="margin:0 0 8px 0">Agregar material</h3>
+      <label for="matName">Nombre</label>
+      <input id="matName" placeholder="Ej: PET transparente" />
+      <label for="matUnit">Unidad</label>
+      <select id="matUnit">
+        <option value="kilogramos">kilogramos</option>
+        <option value="unidad">unidad</option>
+        <option value="litro">litro</option>
+      </select>
+      <label for="matPrice">Precio por unidad (COP)</label>
+      <input id="matPrice" type="number" placeholder="1000" />
+      <label for="matStock">Stock inicial</label>
+      <input id="matStock" type="number" step="0.01" placeholder="0" />
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="addMat" class="primary">Agregar material</button>
+        <button id="clearAll" class="small">Borrar todo</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Al agregar, el material quedará disponible para transacciones.</div>
+    </section>
+
+    <!-- derecha: registro y tablas -->
+    <section class="card">
+      <h3 style="margin:0 0 8px 0">Registrar transacción</h3>
+
+      <label for="txClient">Cliente / Proveedor</label>
+      <input id="txClient" placeholder="Nombre del cliente o proveedor" />
+
+      <div style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label for="txTipo">Tipo</label>
+          <select id="txTipo"><option value="compra">compra</option><option value="venta">venta</option></select>
+        </div>
+        <div style="flex:1">
+          <label for="txMat">Material</label>
+          <select id="txMat"><option value="">-- agrega material --</option></select>
+        </div>
+        <div style="flex:1">
+          <label for="txUnit">Unidad</label>
+          <input id="txUnit" readonly />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label for="txQty">Cantidad</label>
+          <input id="txQty" type="number" step="0.01" />
+        </div>
+        <div>
+          <label for="txPrice">Precio / unidad (COP)</label>
+          <input id="txPrice" type="number" />
+        </div>
+        <div>
+          <label for="stockAvailable">Stock disponible</label>
+          <input id="stockAvailable" readonly />
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1">
+          <label for="txTotal">Total</label>
+          <input id="txTotal" readonly />
+        </div>
+        <div style="width:260px;display:flex;gap:8px">
+          <button id="regTx" class="primary">Registrar y ver recibo</button>
+          <button id="previewTx" class="small">Vista previa</button>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0"/>
+
+      <h4 style="margin:8px 0">Materiales y stock actual</h4>
+      <div style="max-height:120px;overflow:auto">
+        <table id="materialsTable">
+          <thead><tr><th>Material</th><th>Stock</th><th>Unidad</th><th>Precio/u</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h4 style="margin:12px 0 6px 0">Historial de transacciones</h4>
+      <div style="max-height:140px;overflow:auto">
+        <table id="txTable">
+          <thead><tr><th>Fecha</th><th>Código</th><th>Tipo</th><th>Cliente</th><th>Material</th><th>Cantidad</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h4 style="margin:12px 0 6px 0">Historial de stock en bodega</h4>
+      <div style="max-height:200px;overflow:auto">
+        <table id="stockTable">
+          <thead><tr><th>Fecha</th><th>Material</th><th>Antes</th><th>Cambio</th><th>Después</th><th>Origen</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal recibo -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="receipt" role="dialog" aria-modal="true">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div id="receiptLogo" style="width:72px;height:72px;border-radius:8px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">RC</div>
+          <div>
+            <div style="font-weight:800">RED-CUPERA E.S.P</div>
+            <div class="muted">Recibo de transacción</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="printRec" class="primary small">Imprimir</button>
+          <button id="closeRec" class="small">Cerrar</button>
+        </div>
+      </div>
+      <div id="receiptBody"></div>
+    </div>
+  </div>
+
+<script>
+  // persistencia
+  let materials = JSON.parse(localStorage.getItem('materials') || '[]'); // {name,unit,price,stock}
+  let transactions = JSON.parse(localStorage.getItem('transactions') || '[]'); // {fecha,codigo,tipo,client,material,qty,unit,price,total}
+  let stockHistory = JSON.parse(localStorage.getItem('stockHistory') || '[]'); // {fecha,material,stockBefore,change,stockAfter,origin}
+
+  // logo storage (dataURL)
+  function saveLogo(dataUrl){ try{ localStorage.setItem('rc_logo', dataUrl); }catch(e){console.warn(e);} applyLogo(); }
+  function removeLogo(){ localStorage.removeItem('rc_logo'); applyLogo(); }
+  function applyLogo(){
+    const data = localStorage.getItem('rc_logo');
+    const headerLogo = document.getElementById('headerLogo');
+    const receiptLogo = document.getElementById('receiptLogo');
+    headerLogo.innerHTML = ''; receiptLogo.innerHTML = '';
+    if(data){
+      const img = document.createElement('img'); img.src = data; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='contain';
+      headerLogo.appendChild(img);
+      const img2 = document.createElement('img'); img2.src = data; img2.style.width='100%'; img2.style.height='100%'; img2.style.objectFit='contain';
+      receiptLogo.appendChild(img2);
+    } else {
+      headerLogo.textContent = 'RC';
+      receiptLogo.textContent = 'RC';
+      headerLogo.classList.add('logo-box'); // ensure style
+    }
+  }
+
+  // helpers
+  const $ = id => document.getElementById(id);
+  function saveAll(){ localStorage.setItem('materials', JSON.stringify(materials)); localStorage.setItem('transactions', JSON.stringify(transactions)); localStorage.setItem('stockHistory', JSON.stringify(stockHistory)); }
+  function now(){ return new Date().toLocaleString(); }
+  function fmt(n){ return Number(n).toLocaleString('es-CO'); }
+
+  // rendering
+  function renderMaterials(){
+    const tbody = document.querySelector('#materialsTable tbody'); tbody.innerHTML = '';
+    const sel = $('txMat'); sel.innerHTML = '<option value="">-- selecciona --</option>';
+    materials.forEach(m=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${m.name}</td><td>${m.stock}</td><td>${m.unit}</td><td>${fmt(m.price)}</td>`;
+      tbody.appendChild(tr);
+      const opt = document.createElement('option'); opt.value = m.name; opt.textContent = m.name; sel.appendChild(opt);
+    });
+  }
+
+  function renderTx(){
+    const tbody = document.querySelector('#txTable tbody'); tbody.innerHTML = '';
+    transactions.slice().reverse().forEach(t=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.fecha}</td><td>${t.codigo}</td><td>${t.tipo}</td><td>${t.client}</td><td>${t.material}</td><td>${t.qty} ${t.unit}</td><td>${fmt(t.total)}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderStockHistory(){
+    const tbody = document.querySelector('#stockTable tbody'); tbody.innerHTML = '';
+    stockHistory.slice().reverse().forEach(s=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${s.fecha}</td><td>${s.material}</td><td>${s.stockBefore}</td><td>${s.change>0? '+'+s.change : s.change}</td><td>${s.stockAfter}</td><td>${s.origin}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // events & logic
+  function init(){
+    applyLogo();
+
+    // logo upload
+    $('logoInput').onchange = e => {
+      const f = e.target.files[0]; if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ev => saveLogo(ev.target.result);
+      reader.readAsDataURL(f);
+    };
+    $('removeLogo').onclick = ()=> { if(confirm('Eliminar logo guardado?')) removeLogo(); };
+
+    // add material
+    $('addMat').onclick = ()=> {
+      const name = $('matName').value.trim(); const unit = $('matUnit').value || 'kilogramos';
+      const price = parseFloat($('matPrice').value) || 0; const stock = parseFloat($('matStock').value) || 0;
+      if(!name) return alert('Nombre requerido');
+      if(materials.some(m=>m.name.toLowerCase()===name.toLowerCase())) return alert('Material ya existe');
+      materials.push({name,unit,price,stock});
+      saveAll(); renderMaterials(); $('matName').value=''; $('matPrice').value=''; $('matStock').value='';
+    };
+
+    // clear all
+    $('clearAll').onclick = ()=> {
+      if(confirm('Borrar todos los datos (materiales/transacciones/historial)?')){
+        materials=[]; transactions=[]; stockHistory=[]; saveAll(); renderMaterials(); renderTx(); renderStockHistory();
+      }
+    };
+
+    // when material selected, fill unit, price and available stock
+    $('txMat').onchange = ()=> {
+      const sel = $('txMat').value;
+      const m = materials.find(x=>x.name===sel);
+      $('txUnit').value = m ? m.unit : '';
+      $('txPrice').value = m ? m.price : '';
+      $('stockAvailable').value = m ? `${m.stock} ${m.unit}` : '';
+      updateTotal();
+    };
+
+    // qty/price change -> total
+    $('txQty').oninput = updateTotal; $('txPrice').oninput = updateTotal;
+    function updateTotal(){ const q = parseFloat($('txQty').value)||0; const p = parseFloat($('txPrice').value)||0; $('txTotal').value = q && p ? fmt(q*p) : ''; }
+
+    // preview
+    $('previewTx').onclick = ()=> {
+      const client = $('txClient').value.trim() || 'N/D';
+      const tipo = $('txTipo').value; const mat = $('txMat').value || 'N/D';
+      const qty = parseFloat($('txQty').value)||0; const price = parseFloat($('txPrice').value)||0; const total = qty*price;
+      showReceipt({fecha: now(), codigo:'PREVIEW', tipo, client, material: mat, qty, unit: $('txUnit').value || '', price, total}, true);
+    };
+
+    // register transaction
+    $('regTx').onclick = ()=> {
+      const client = $('txClient').value.trim(); const tipo = $('txTipo').value;
+      const materialName = $('txMat').value; const qty = parseFloat($('txQty').value);
+      const price = parseFloat($('txPrice').value);
+      if(!client) return alert('Cliente/Proveedor requerido');
+      if(!materialName) return alert('Selecciona material');
+      if(isNaN(qty) || qty <= 0) return alert('Cantidad inválida');
+      if(isNaN(price) || price < 0) return alert('Precio inválido');
+      const mat = materials.find(m=>m.name===materialName);
+      if(!mat) return alert('Material no encontrado');
+      if(tipo==='venta' && qty > mat.stock) return alert('No hay suficiente stock en bodega');
+      const stockBefore = Number(mat.stock);
+      const change = tipo === 'compra' ? Number(qty) : -Number(qty);
+      const stockAfter = Number((stockBefore + change).toFixed(4));
+      mat.stock = stockAfter >= 0 ? stockAfter : 0;
+      const fecha = now();
+      const codigo = 'TX' + (transactions.length + 1).toString().padStart(5,'0');
+      const total = Number((qty * price).toFixed(2));
+      const tx = {fecha,codigo,tipo,client,material:materialName,qty,unit:mat.unit,price,total};
+      transactions.push(tx);
+      stockHistory.push({fecha,material:materialName,stockBefore,change,stockAfter:mat.stock,origin:tipo});
+      saveAll(); renderMaterials(); renderTx(); renderStockHistory();
+      showReceipt(tx,false);
+      // clear inputs
+      $('txClient').value=''; $('txQty').value=''; $('txPrice').value=''; $('txTotal').value=''; $('stockAvailable').value='';
+    };
+
+    // modal controls
+    $('closeRec').onclick = ()=> closeModal();
+    $('printRec').onclick = ()=> window.print();
+
+    // XLSX export (todo el reporte: materials, transactions, stockHistory)
+    $('exportXlsxBtn').onclick = ()=> {
+      try {
+        const wb = XLSX.utils.book_new();
+
+        // Materials sheet
+        const materialsSheetData = [
+          ["Nombre","Unidad","Precio por unidad","Stock"]
+        ];
+        materials.forEach(m => materialsSheetData.push([m.name, m.unit, m.price, m.stock]));
+        const ws1 = XLSX.utils.aoa_to_sheet(materialsSheetData);
+        XLSX.utils.book_append_sheet(wb, ws1, "Materials");
+
+        // Transactions sheet
+        const txSheetData = [
+          ["Fecha","Código","Tipo","Cliente/Proveedor","Material","Cantidad","Unidad","Precio/u","Total"]
+        ];
+        transactions.forEach(t => txSheetData.push([t.fecha, t.codigo, t.tipo, t.client, t.material, t.qty, t.unit, t.price, t.total]));
+        const ws2 = XLSX.utils.aoa_to_sheet(txSheetData);
+        XLSX.utils.book_append_sheet(wb, ws2, "Transactions");
+
+        // Stock history sheet
+        const shSheetData = [
+          ["Fecha","Material","Stock Antes","Cambio","Stock Después","Origen"]
+        ];
+        stockHistory.forEach(s => shSheetData.push([s.fecha, s.material, s.stockBefore, s.change, s.stockAfter, s.origin]));
+        const ws3 = XLSX.utils.aoa_to_sheet(shSheetData);
+        XLSX.utils.book_append_sheet(wb, ws3, "StockHistory");
+
+        // Generar archivo
+        XLSX.writeFile(wb, "RED-CUPERA_report.xlsx");
+      } catch (e) {
+        alert("Error generando XLSX: " + e.message);
+      }
+    };
+
+    // initial render
+    renderMaterials(); renderTx(); renderStockHistory();
+  }
+
+  function showReceipt(tx, preview=false){
+    const body = $('receiptBody'); body.innerHTML = '';
+    const logoData = localStorage.getItem('rc_logo');
+    const header = document.createElement('div');
+    header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.marginBottom='8px';
+    const left = document.createElement('div'); left.style.display='flex'; left.style.gap='12px'; left.style.alignItems='center';
+    const logoBox = document.createElement('div'); logoBox.style.width='72px'; logoBox.style.height='72px'; logoBox.style.borderRadius='8px'; logoBox.style.overflow='hidden'; logoBox.style.background='var(--green)';
+    if(logoData){ const img=document.createElement('img'); img.src=logoData; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='contain'; logoBox.appendChild(img); } else { logoBox.textContent='RC'; logoBox.style.color='#fff'; logoBox.style.display='flex'; logoBox.style.alignItems='center'; logoBox.style.justifyContent='center'; logoBox.style.fontWeight='800'; }
+    const info = document.createElement('div'); info.innerHTML = `<div style="font-weight:800">RED-CUPERA E.S.P</div><div style="color:#4b7b58">${preview? 'Vista previa' : 'Recibo'}</div>`;
+    left.appendChild(logoBox); left.appendChild(info);
+    const right = document.createElement('div'); right.innerHTML = `<div style="font-weight:700">Código: ${tx.codigo}</div><div style="color:#6b8f6c">${tx.fecha}</div>`;
+    header.appendChild(left); header.appendChild(right);
+    body.appendChild(header);
+
+    const client = document.createElement('div'); client.style.marginBottom='8px'; client.innerHTML = `<strong>Cliente/Proveedor:</strong> ${tx.client || 'N/D'}`;
+    body.appendChild(client);
+
+    const lines = document.createElement('div');
+    lines.innerHTML = `<div class="line"><div>${tx.material} (${tx.unit}) x ${tx.qty}</div><div>${fmt(tx.price)}</div></div>
+                       <div class="line"><div>Subtotal</div><div>${fmt(tx.total)}</div></div>
+                       <div style="display:flex;justify-content:space-between;margin-top:10px"><div class="total">TOTAL</div><div class="total">${fmt(tx.total)}</div></div>`;
+    body.appendChild(lines);
+
+    const footer = document.createElement('div'); footer.style.marginTop='12px'; footer.style.fontSize='13px';
+    footer.innerHTML = `<div>RED-CUPERA E.S.P — ${preview? '(no registrada)' : 'Recibo registrado'}</div><div style="margin-top:6px;color:#3b6b47">Transformando residuos en oportunidades</div>`;
+    body.appendChild(footer);
+
+    // show modal
+    const modal = $('modal'); modal.classList.add('open'); modal.setAttribute('aria-hidden','false');
+  }
+
+  function closeModal(){ const modal = $('modal'); modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); }
+
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
